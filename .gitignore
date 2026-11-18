@@ -1,0 +1,39 @@
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python caches and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local user configuration and secrets (never commit real user configs)
+config/servers.json
+config/*.local.json
+broker_runtime.json
+*.bak.*
+.env
+.env.*
+
+# Runtime audit logs and test sandboxes
+logs/*.log
+logs/*.jsonl
+logs/*.json
+!logs/.gitkeep
+sandbox_files/
+tmp_test_sandbox/
+
+# IDE / OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

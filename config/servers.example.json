@@ -1,0 +1,35 @@
+{
+  "default_server": "filesystem-sandbox",
+  "approval_timeout_seconds": 120,
+  "audit_log_path": "logs/audit.jsonl",
+  "servers": {
+    "filesystem-sandbox": {
+      "description": "Scoped filesystem MCP server restricted strictly to an explicit sandbox directory",
+      "transport": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "D:\\walled-ai-mcp-guard\\sandbox_files"
+      ],
+      "sandbox_dir": "D:\\walled-ai-mcp-guard\\sandbox_files",
+      "env": {},
+      "enabled": true
+    },
+    "safe-test-server": {
+      "description": "Built-in local test MCP server with non-destructive tools inside an isolated sandbox directory",
+      "transport": "stdio",
+      "command": "D:\\walled-ai-mcp-guard\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "tests.test_mcp_server",
+        "--sandbox-dir",
+        "D:\\walled-ai-mcp-guard\\sandbox_files"
+      ],
+      "cwd": "D:\\walled-ai-mcp-guard",
+      "sandbox_dir": "D:\\walled-ai-mcp-guard\\sandbox_files",
+      "env": {},
+      "enabled": true
+    }
+  }
+}
