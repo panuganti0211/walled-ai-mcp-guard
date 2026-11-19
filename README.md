@@ -15,8 +15,8 @@ Built with the **official MCP Python SDK (`mcp 2.3.0`)**, **PySide6 (`6.12.0`)**
 | **MCP STDIO Proxy (`StdioMCPProxy`)** | **Verified End-to-End** | Tested over real Windows STDIO pipes against both the built-in safe test server and official `@modelcontextprotocol/server-filesystem` (`npx`). |
 | **PySide6 Desktop Guard & Local Broker** | **Verified End-to-End** | Tested live with 3-process STDIO -> authenticated `127.0.0.1` broker -> always-on-top Allow/Block popups, multi-popup concurrency, timeouts, and shutdown cancellation. |
 | **Remote Streamable HTTP Gateway (`RemoteMCPGateway`)** | **Verified Locally** | Local Streamable HTTP integration tests passed using official `mcp.client.streamable_http` against live FastAPI/Uvicorn + desktop popup approval flow. |
-| **Claude Desktop (Live GUI)** | **Pending Live Manual Test** | Claude Desktop is not currently installed on the development machine. Backup-first configurator, `@modelcontextprotocol/server-filesystem`, and exact foreign-`cwd` launch tests passed, but **live GUI Tests A–E inside Claude Desktop have not yet been executed**. |
-| **Claude Web (Live `claude.ai`)** | **Pending Public HTTPS & OAuth 2.1 Deployment** | Local Streamable HTTP tests passed, but **live Claude Web connector verification has not yet been performed** and requires a public HTTPS domain plus OAuth 2.1 Protected Resource Metadata (RFC 9728). |
+| **Claude Desktop (Live GUI on Windows)** | **Verified in Live Claude Desktop on Windows** | Live integration on Windows verified with official `@modelcontextprotocol/server-filesystem` (`npx`). Claude Desktop detected `walled-ai-mcp-guard` (Running); approved directory listing (`list_allowed_directories`); approved file creation (`write_file` -> `sandbox_files/claude_approved_test.txt` verified on disk); blocked file creation (`write_file` for `claude_blocked_test.txt` -> popup Blocked -> `Test-Path` returned `False`, Claude gracefully reported tool call denied); dashboard counters verified (Total: 3, Approved: 2, Blocked: 1, Pending: 0); audit log verified (`not_executed`). |
+| **Claude Web (Live `claude.ai`)** | **Locally Verified (Remote Gateway) / Pending Public HTTPS & OAuth 2.1 Deployment** | `RemoteMCPGateway` is fully implemented and locally verified over Streamable HTTP (6/6 tests passing) using official `mcp.client.streamable_http` against live FastAPI/Uvicorn + desktop popup flow. **Live integration with hosted `claude.ai` has not yet been executed**, as it requires public HTTPS reverse-proxy deployment and RFC 9728 OAuth 2.1 Protected Resource Metadata. |
 
 ---
 
@@ -190,17 +190,16 @@ walled-ai-mcp-guard/
   ```powershell
   python --version
   ```
-  *(If Windows Store App Execution Aliases interfere with bare `python`, reference your concrete Python binary directly, e.g. `C:\Users\<user>\AppData\Local\Python\pythoncore-3.14-64\python.exe`.)*
-- Install **Node.js LTS** (includes `npx`) if using `@modelcontextprotocol/server-filesystem`.
+- Install **Node.js LTS** (includes `npx`) for running `@modelcontextprotocol/server-filesystem`.
 
 ### 2. Create Virtual Environment & Install Dependencies
 ```powershell
 cd D:\walled-ai-mcp-guard
 python -m venv .venv
-D:\walled-ai-mcp-guard\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-> **Windows Application Control Note:** Always run tools via the signed interpreter (`D:\walled-ai-mcp-guard\.venv\Scripts\python.exe -m pytest`, `python.exe run.py`) rather than pip-generated `.venv\Scripts\*.exe` wrappers, which Windows Application Control policies may block.
+> **Tested Execution Convention:** Throughout this project, commands are invoked explicitly via the virtual-environment interpreter (`.\.venv\Scripts\python.exe <script>` or `.\.venv\Scripts\python.exe -m <module>`). This ensures the intended virtual environment, installed packages, and MCP SDK dependencies are consistently resolved across all Windows PowerShell sessions.
 
 ### 3. Safe Filesystem MCP Server Configuration
 Copy `config/servers.example.json` to `config/servers.json` (gitignored) or generate it automatically via `scripts/configure_claude_desktop.py`. Never configure a drive root (`C:\`) or user profile root; always scope `@modelcontextprotocol/server-filesystem` strictly to an explicit directory such as `D:\walled-ai-mcp-guard\sandbox_files`.
@@ -234,47 +233,110 @@ Test-Path "$env:TEMP\walled_ai_mcp_guard_demo\blocked_demo.txt"
 
 ---
 
-## 10. Claude Desktop Configuration (Windows)
+## 10. Claude Desktop Configuration & Verified Live Results (Windows)
 
-> **Status Disclosure:** Live GUI verification inside Claude Desktop is **pending** until Claude Desktop is installed on the host machine and Tests A–E below are run.
+Claude Desktop integration has been **fully verified live on Windows** against the official `@modelcontextprotocol/server-filesystem` MCP server running under Node.js (`npx`).
 
-### Step 1: Install Claude Desktop
-Download from [https://claude.ai/download](https://claude.ai/download) (or `winget install Anthropic.Claude`), launch once, and sign in.
-
-### Step 2: Locate Configuration File
+### Step 1: Locate Configuration File
 - Standard installer: `%APPDATA%\Claude\claude_desktop_config.json`
 - Microsoft Store / MSIX package: `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude_desktop_config.json`
 
-### Step 3: Run Safe Backup-First Configurator
-Preview changes first:
+### Step 2: Run Safe Backup-First Configurator
+Preview configuration changes:
 ```powershell
 D:\walled-ai-mcp-guard\.venv\Scripts\python.exe scripts\configure_claude_desktop.py --dry-run
 ```
-Apply safely (automatically backs up any existing file and preserves unrelated `mcpServers`):
+Apply the configuration (automatically creates timestamped backup and preserves unrelated servers):
 ```powershell
 D:\walled-ai-mcp-guard\.venv\Scripts\python.exe scripts\configure_claude_desktop.py --server filesystem-sandbox
 ```
 
-### Step 4: Start Walled AI & Fully Restart Claude Desktop
-1. Start Walled AI MCP Guard (`D:\walled-ai-mcp-guard\.venv\Scripts\python.exe run.py`).
-2. Right-click Claude in the Windows system tray -> **Quit**, then relaunch Claude Desktop.
-3. Run **Tests A–E** (Tool Discovery, Allow, Block + marker absence, Multi-request independence, and Shutdown fail-closed).
+The resulting `claude_desktop_config.json` entry routes Claude Desktop through Walled AI MCP Guard:
+```json
+{
+  "mcpServers": {
+    "walled-ai-mcp-guard": {
+      "command": "D:\\walled-ai-mcp-guard\\.venv\\Scripts\\python.exe",
+      "args": [
+        "-m",
+        "app.proxy.stdio_proxy",
+        "--config",
+        "D:\\walled-ai-mcp-guard\\config\\servers.json",
+        "--server",
+        "filesystem-sandbox",
+        "--use-desktop-guard"
+      ],
+      "env": {
+        "PYTHONPATH": "D:\\walled-ai-mcp-guard",
+        "PYTHONUTF8": "1"
+      }
+    }
+  }
+}
+```
+
+### Step 3: Launch Walled AI & Restart Claude Desktop
+1. Launch the Walled AI MCP Guard desktop app:
+   ```powershell
+   D:\walled-ai-mcp-guard\.venv\Scripts\python.exe run.py
+   ```
+   *(Verify the status badge displays **PROTECTED** and the shield icon appears in the Windows system tray).*
+2. Fully restart Claude Desktop (right-click the Claude icon in the Windows notification area -> **Quit**, then relaunch).
+
+### Step 4: Verified Live Integration Test Sequence & Outcomes
+
+The following tests were executed and verified live inside Claude Desktop on Windows:
+
+1. **Server Detection & Discovery:**
+   - Claude Desktop settings showed `walled-ai-mcp-guard` with status **Running**.
+   - Prompting Claude to inspect files triggered `list_allowed_directories` -> Walled AI popup appeared -> user clicked **Allow Execution** -> Claude listed the allowed sandbox directory.
+
+2. **Allow Execution Test (Verified File Creation):**
+   - **Claude Prompt:** *"Create a file named claude_approved_test.txt with the content: Created through Claude Desktop and protected by Walled AI MCP Guard."*
+   - **Enforcement:** Claude invoked `write_file`. The Walled AI always-on-top authorization popup appeared showing `server: filesystem-sandbox`, `tool: write_file`, UTC timestamp, and redacted parameters (`"content": "[REDACTED_CONTENT len=69]"`).
+   - **Decision:** Clicked **Allow Execution**.
+   - **Outcome:** Claude completed the write operation. Verified file exists on disk with exact expected content:
+     ```powershell
+     Get-Content ".\sandbox_files\claude_approved_test.txt"
+     # Output: Created through Claude Desktop and protected by Walled AI MCP Guard.
+     ```
+
+3. **Block Execution Test (Verified Zero-Execution & Marker Absence):**
+   - **Claude Prompt:** *"Create a file named claude_blocked_test.txt with the content: This file should never be created because it will be blocked by Walled AI MCP Guard."*
+   - **Enforcement:** Claude invoked `write_file`. The Walled AI always-on-top authorization popup appeared.
+   - **Decision:** Clicked **Block Execution**.
+   - **Outcome:** Request was aborted before reaching the upstream tool. Claude received JSON-RPC denial code `-32003` and gracefully responded: *"The tool call to write_file was blocked by the user or security policy."*
+   - **Proof of Non-Execution:** Verified the marker file was never created on disk:
+     ```powershell
+     Test-Path ".\sandbox_files\claude_blocked_test.txt"
+     # Output: False
+     ```
+
+4. **Dashboard & Audit Log Verification:**
+   - **Live Counters:** Confirmed exact request counts: `Total: 3`, `Approved: 2`, `Blocked / Denied: 1`, `Pending: 0`.
+   - **Audit Trail:** Confirmed `logs/audit.jsonl` contains the blocked request with `execution_result: "not_executed"`.
 
 ---
 
 ## 11. Remote MCP Gateway Configuration (Streamable HTTP)
 
-> **Status Disclosure:** Local Streamable HTTP integration tests have **passed** against the official MCP Python SDK 2.3.0 client. Live **Claude Web** integration is **pending** public HTTPS deployment and OAuth 2.1 connector verification.
+> **Implementation & Testing Status Disclosure:**
+> 1. **Implemented in Code:** `RemoteMCPGateway` (`app/proxy/http_gateway.py`) is fully implemented using FastAPI, Uvicorn, and official MCP Python SDK 2.3.0 (`StreamableHTTPSessionManager`).
+> 2. **Locally Verified (6/6 Tests):** All 6 automated tests in `tests/test_http_gateway.py` passed using the official `mcp.client.streamable_http` client, validating token authentication, rate limiting, payload capping, DNS rebinding defenses, and tool authorization.
+> 3. **Hosted Claude Web (`claude.ai`) Integration Not Yet Tested:** Live integration with hosted Claude Web has not been executed.
+> 4. **Authentication & Production Deployment Requirements:** Based on source-code inspection of `app/proxy/http_gateway.py`, deploying to hosted Claude Web requires:
+>    - A public HTTPS endpoint with TLS terminated by a reverse proxy (e.g., Caddy, Nginx, or Cloudflare Tunnel) proxying to `127.0.0.1:8443`.
+>    - Current code enforces static RFC 6750 Bearer authentication (`MCP_GUARD_GATEWAY_TOKEN`); native Claude Web custom connector onboarding additionally requires an OAuth 2.1 Authorization Server providing RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`.
 
 ### Running Locally Behind a Reverse Proxy
 1. Start Walled AI MCP Guard (`run.py`) so remote requests trigger your desktop approval popups.
 2. Generate a strong ephemeral Bearer token (never hardcode tokens):
    ```powershell
-   $env:MCP_GUARD_GATEWAY_TOKEN = D:\walled-ai-mcp-guard\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32))"
+   $env:MCP_GUARD_GATEWAY_TOKEN = .\.venv\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32))"
    ```
 3. Launch the gateway bound strictly to `127.0.0.1`:
    ```powershell
-   D:\walled-ai-mcp-guard\.venv\Scripts\python.exe -m app.proxy.http_gateway `
+   .\.venv\Scripts\python.exe -m app.proxy.http_gateway `
      --config config\servers.json `
      --server filesystem-sandbox `
      --host 127.0.0.1 `
@@ -326,10 +388,10 @@ Captured from live real-MCP runs using [scripts/capture_screenshots.py](file:///
 
 ## 14. Known Limitations
 
-1. **Claude Desktop Live GUI Testing Pending:** Not yet executed on the development host because Claude Desktop is not installed yet.
-2. **Claude Web Live Deployment Pending:** Local Streamable HTTP tests pass; live `claude.ai` integration requires public HTTPS hosting and OAuth 2.1 Protected Resource Metadata (RFC 9728).
-3. **Same-User Windows Threat Model:** Owner-only DACLs protect the broker token file from other local user accounts and network/browser attackers, not from malware already running under the same Windows user account.
-4. **In-Memory Request Store:** Live dashboard request state is held in memory per session (durable history is reloaded safely from `logs/audit.jsonl`).
+1. **Claude Desktop Process Restart Requirement:** Claude Desktop caches MCP server configurations and spawned STDIO pipes at startup. If `claude_desktop_config.json` is modified or the proxy command changes, Claude Desktop must be completely quit from the Windows notification area (not just closed to tray) and relaunched.
+2. **Claude Web Live Deployment Requirement:** While `RemoteMCPGateway` is fully implemented and locally verified over Streamable HTTP (6/6 passing tests), live integration with hosted `claude.ai` requires a public HTTPS reverse proxy (e.g. Caddy, Nginx, or Cloudflare Tunnel) for TLS termination and OAuth 2.1 Protected Resource Metadata (RFC 9728).
+3. **Same-User Windows Threat Model:** Owner-only Windows DACLs protect the broker token file from other local user accounts and network/browser attackers, but do not protect against malware already running under the same Windows user account context.
+4. **In-Memory Live Request Store:** Live dashboard request state is maintained in-memory per session; durable audit history is safely logged to and reloaded from append-only `logs/audit.jsonl`.
 
 ---
 
@@ -337,7 +399,7 @@ Captured from live real-MCP runs using [scripts/capture_screenshots.py](file:///
 
 | Issue | Cause | Fix |
 | :--- | :--- | :--- |
-| `pytest.exe` blocked by Windows Application Control | Unsigned pip `.exe` shim blocked by Windows policy | Always use `D:\walled-ai-mcp-guard\.venv\Scripts\python.exe -m pytest`. |
+| Command or module not found using bare `pytest` | Path resolution or script execution policy | Always invoke via the virtual environment interpreter: `.\.venv\Scripts\python.exe -m pytest` |
 | `ModuleNotFoundError: No module named 'app'` in Claude Desktop logs | Claude Desktop launches Python from its own app directory | Ensure `"env": {"PYTHONPATH": "D:\\walled-ai-mcp-guard", "PYTHONUTF8": "1"}` is present in `claude_desktop_config.json`. |
 | Every tool call immediately fails with `-32005` | Walled AI desktop app is not running or monitoring is **STOPPED** | Launch `run.py` and confirm the status badge reads **PROTECTED**. |
 | Claude Desktop does not show new MCP server | Claude minimized to tray instead of quitting | Right-click Claude in the Windows notification area -> **Quit**, then relaunch. |

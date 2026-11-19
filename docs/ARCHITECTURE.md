@@ -8,11 +8,14 @@ This document describes the internal architecture, security boundaries, concurre
 
 Walled AI MCP Guard implements a **genuine intermediary MCP Server/Client Proxy** built on the official **MCP Python SDK (`mcp 2.3.0`)**:
 
-- **MCP Host / Client:** Claude Desktop (local STDIO), an interactive MCP CLI client, or a remote Streamable HTTP MCP client (future Claude Web behind HTTPS).
+- **MCP Host / Client:**
+  - **Claude Desktop on Windows:** Fully verified live client communicating over Windows STDIO pipes via `mcp.server.stdio.stdio_server`.
+  - **Interactive Test Client:** `scripts/demo_mcp_client.py` using official `ClientSession` over STDIO for testing.
+  - **Remote MCP Clients / Claude Web:** Authenticated Streamable HTTP clients connecting to `RemoteMCPGateway` at `/mcp` (tested locally; designed for public HTTPS reverse proxying via Caddy/Nginx/Cloudflare Tunnel and RFC 9728 OAuth 2.1 metadata).
 - **MCP Guard Proxy Layer:**
   - `StdioMCPProxy` (`app/proxy/stdio_proxy.py`): Serves downstream over `mcp.server.stdio.stdio_server` (`Server`) and connects upstream via `mcp.client.stdio.stdio_client` (`ClientSession`).
   - `RemoteMCPGateway` (`app/proxy/http_gateway.py`): Serves downstream over FastAPI + `StreamableHTTPSessionManager` at `/mcp` and connects upstream via `stdio_client` (`ClientSession`).
-- **Upstream MCP Server:** Only explicitly configured, validated servers in `config/servers.json` (e.g., sandbox-restricted `@modelcontextprotocol/server-filesystem` or `tests.test_mcp_server`).
+- **Upstream MCP Server:** Only explicitly configured, validated servers in `config/servers.json` (e.g., sandbox-restricted `@modelcontextprotocol/server-filesystem` via `npx` or `tests.test_mcp_server`).
 
 ```mermaid
 flowchart LR
@@ -65,6 +68,11 @@ flowchart LR
 - Exposes an authenticated Streamable HTTP endpoint (`/mcp`) as a raw Starlette ASGI `Route` inside FastAPI (avoiding `307` redirects on `POST /mcp`).
 - Enforces mandatory Bearer token authentication (`MCP_GUARD_GATEWAY_TOKEN` >= 32 chars, constant-time `hmac.compare_digest`, `401` + RFC 6750 `WWW-Authenticate`), sliding-window per-client rate limiting (`429`), 1 MiB body size cap (`413`), and SDK `TransportSecuritySettings` DNS-rebinding `Host`/`Origin` checks before any request reaches `StreamableHTTPSessionManager`.
 - Connects to either an injected `ApprovalManager` or the desktop `LocalAuthorizationBroker` via `RemoteBrokerAuthorizer`.
+- **Implementation & Testing Status:**
+  - *Implemented:* Fully implemented in `app/proxy/http_gateway.py` using official MCP Python SDK 2.3.0 `StreamableHTTPSessionManager`.
+  - *Locally Verified:* All 6 automated tests in `tests/test_http_gateway.py` passed using official `mcp.client.streamable_http`.
+  - *Hosted Claude Web Integration:* Not yet tested live against hosted `claude.ai`.
+  - *Deployment Requirements (from code inspection):* Requires public HTTPS reverse proxy hosting (Caddy, Nginx, Cloudflare Tunnel) for TLS termination and an OAuth 2.1 Authorization Server providing RFC 9728 Protected Resource Metadata at `/.well-known/oauth-protected-resource`.
 
 ### `RequestHandler` (`app/proxy/request_handler.py`) — Single Enforcement Boundary
 - **Security Invariant:** `RequestHandler.handle_call_tool` is the **only** code path in the entire codebase permitted to invoke `upstream.call_tool(...)`.
